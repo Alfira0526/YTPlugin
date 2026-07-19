@@ -62,6 +62,12 @@
     </div>
 
     <div class="card">
+      <h2>실시간 자막 (베타)</h2>
+      <button id="realtimeBtn" style="width:100%;padding:9px;border-radius:8px;border:1px solid #3a5bd9;background:#3a5bd9;color:#fff;font-weight:600;cursor:pointer;">실시간 자막 시작</button>
+      <div class="hint">탭 오디오를 캡처해 실시간으로 자막을 표시합니다((a) 방식). 현재 데모는 목 STT/MT이며, 실제 인식·번역은 준비 중입니다.</div>
+    </div>
+
+    <div class="card">
       <h2>이 영상 자막(SRT) 불러오기</h2>
       <input type="file" id="srtFile" accept=".srt,.vtt,text/plain" />
       <div class="hint">사전 생성된 자막 파일을 현재 영상(<code id="vidLabel">-</code>)에 적용합니다.</div>

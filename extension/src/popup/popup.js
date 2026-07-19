@@ -9,6 +9,7 @@
 
   let currentVideoId = null;
   let currentTabId = null;
+  let realtimeOn = false;
 
   function readSettingsFromUI() {
     return {
@@ -71,6 +72,31 @@
     $("status").textContent = st.hasTrack
       ? `자막 적용됨 · ${st.cueCount}줄`
       : "이 영상에 불러온 자막이 없습니다.";
+    realtimeOn = !!st.realtime;
+    updateRealtimeBtn();
+  }
+
+  function updateRealtimeBtn() {
+    const btn = $("realtimeBtn");
+    if (!btn) return;
+    btn.textContent = realtimeOn ? "실시간 자막 정지" : "실시간 자막 시작";
+    btn.style.background = realtimeOn ? "#b4392a" : "#3a5bd9";
+    btn.style.borderColor = btn.style.background;
+  }
+
+  async function onRealtimeToggle() {
+    const tab = await queryActiveTab();
+    if (!tab) return;
+    const type = realtimeOn ? "realtime:stop" : "realtime:start";
+    chrome.runtime.sendMessage({ type, tabId: tab.id }, (resp) => {
+      void chrome.runtime.lastError;
+      if (resp && resp.ok === false) {
+        $("status").textContent = "실시간 시작 실패: " + (resp.error || "권한/탭 확인");
+        return;
+      }
+      realtimeOn = !realtimeOn;
+      updateRealtimeBtn();
+    });
   }
 
   async function onSrtSelected(ev) {
@@ -94,6 +120,7 @@
       $(id).addEventListener("change", saveSettings);
     });
     $("srtFile").addEventListener("change", onSrtSelected);
+    $("realtimeBtn").addEventListener("click", onRealtimeToggle);
     await refreshStatus();
   }
 

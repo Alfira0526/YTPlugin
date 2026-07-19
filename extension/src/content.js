@@ -17,7 +17,26 @@
     videoEl: null,
     rafId: null,
     lastText: null,
+    // 실시간 모드 ((a) tabCapture)
+    realtime: null, // RealtimeProvider 인스턴스
+    realtimeMode: false,
+    liveTimer: null,
   };
+
+  // 실시간 데모 구성(목 STT/MT) — 실구현(온디바이스/서버)은 Q-4 결정 후 교체
+  const DEMO_ZH = [
+    { text: "大家好，欢迎来到直播间", dur: 3 },
+    { text: "今天在米兰参加设计周", dur: 3 },
+    { text: "谢谢你们的支持", dur: 3 },
+    { text: "我们下次再见", dur: 3 },
+  ];
+  const DEMO_DICT = {
+    "大家好，欢迎来到直播间": "여러분 안녕하세요, 방송에 오신 걸 환영해요",
+    "今天在米兰参加设计周": "오늘 미란에서 디자인 위크에 참가하고 있어요",
+    "谢谢你们的支持": "여러분의 성원에 감사해요",
+    "我们下次再见": "다음에 또 만나요",
+  };
+  const DEMO_GLOSSARY = [{ from: "미란", to: "밀라노" }];
 
   // --- storage 헬퍼 (chrome.storage.local) ---
   function storageGet(keys) {
@@ -63,6 +82,7 @@
   // --- 동기화 루프 ---
   function tick() {
     state.rafId = requestAnimationFrame(tick);
+    if (state.realtimeMode) return; // 실시간 모드는 push로 표시(정적 track과 충돌 방지)
     const v = state.videoEl;
     const track = state.track;
     const overlay = state.overlay;
@@ -148,7 +168,46 @@
     /* storage 미가용 환경(테스트) 무시 */
   }
 
-  // --- 팝업 메시지 ---
+  // --- 실시간 모드 ((a) tabCapture) ---
+  function showLiveCue(cue) {
+    if (!state.overlay || !cue) return;
+    state.overlay.setText(cue.text);
+    if (state.liveTimer) clearTimeout(state.liveTimer);
+    const holdMs = Math.max(2500, (cue.end - cue.start) * 1000);
+    state.liveTimer = setTimeout(() => {
+      if (state.realtimeMode && state.overlay) state.overlay.setText("");
+    }, holdMs);
+  }
+
+  function enterRealtime() {
+    if (state.realtimeMode) return;
+    const { RealtimeProvider, MockSttClient, MockMtClient, Glossary } = self.YTP;
+    const clock = () => (state.videoEl ? state.videoEl.currentTime : 0);
+    const provider = new RealtimeProvider({
+      sttClient: new MockSttClient(DEMO_ZH, clock),
+      mtClient: new MockMtClient(DEMO_DICT),
+      glossary: new Glossary(DEMO_GLOSSARY),
+    });
+    provider.onCue((cue) => showLiveCue(cue));
+    provider.start();
+    state.realtime = provider;
+    state.realtimeMode = true;
+    if (state.overlay) state.overlay.setText("");
+  }
+
+  function exitRealtime() {
+    state.realtimeMode = false;
+    if (state.realtime) state.realtime.stop();
+    state.realtime = null;
+    if (state.liveTimer) {
+      clearTimeout(state.liveTimer);
+      state.liveTimer = null;
+    }
+    if (state.overlay) state.overlay.setText("");
+    state.lastText = null;
+  }
+
+  // --- 팝업/백그라운드 메시지 ---
   try {
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       if (!msg || !msg.type) return;
@@ -157,10 +216,18 @@
           videoId: state.videoId,
           hasTrack: !!state.track,
           cueCount: state.track ? state.track.length : 0,
+          realtime: state.realtimeMode,
         });
       } else if (msg.type === "srtUpdated") {
         loadTrackForCurrentVideo().then(() => sendResponse({ ok: true }));
         return true; // async
+      } else if (msg.type === "realtime:on") {
+        enterRealtime();
+      } else if (msg.type === "realtime:off") {
+        exitRealtime();
+      } else if (msg.type === "realtime:audioChunk") {
+        // 오디오 윈도우 신호 → STT 구동(스켈레톤: 목이 다음 세그먼트 방출)
+        if (state.realtime) state.realtime.pushAudio(null);
       }
     });
   } catch (_e) {

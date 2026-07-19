@@ -12,24 +12,51 @@
 ## 구조
 
 ```
-manifest.json                 # MV3, 최소 권한(storage + youtube.com host_permissions만)
+manifest.json                 # MV3, 권한: storage + tabCapture + offscreen, youtube.com host
 src/
   core/
     srt.js                    # SRT/VTT 파싱 (순수, 테스트 가능)
     track.js                  # SubtitleTrack: 재생 시각→활성 자막 (이진탐색+캐시)
+    glossary.js               # 고유명사 용어집 (JS, pilot 대응)
   providers/
-    static-provider.js        # SubtitleProvider 인터페이스 + StaticProvider(video_id→SRT)
+    static-provider.js        # StaticProvider(video_id→SRT) — 사전 생성 자막
+  realtime/                   # ★ (a) tabCapture 실시간 경로
+    stt-client.js             #   SttClient 인터페이스 + MockSttClient
+    mt-client.js              #   MtClient 인터페이스 + MockMtClient
+    realtime-provider.js      #   캡처→STT→MT→용어집→onCue 오케스트레이터
   overlay.js                  # 오버레이 DOM 생성·스타일 적용
-  content.js                  # 유튜브 video 탐색·싱크 루프·SPA 대응 (Chrome API 어댑터)
-  popup/                      # 설정(on·off/크기/위치/배경) + 이 영상에 SRT 로드
+  content.js                  # video 싱크·SPA·정적/실시간 모드 (Chrome API 어댑터)
+  background.js               # 서비스 워커: tabCapture 조정, offscreen 관리
+  offscreen.html/.js          # 탭 오디오 캡처(화면 없는 문서)
+  popup/                      # 설정 + SRT 로드 + 실시간 시작/정지
 styles/overlay.css            # 오버레이 스타일 (CSS 변수로 크기·배경 조절)
 test/
-  core.test.cjs               # 코어 유닛 테스트 (node --test)
+  core.test.cjs               # SRT·트랙·정적공급원 유닛 (node --test)
+  realtime.test.cjs           # 용어집·STT목·RealtimeProvider 유닛 (node --test)
   overlay.dom.test.cjs        # 실제 Chromium DOM 통합 검증 (Playwright)
 ```
 
-**자막 공급원 확장 지점** — (a)/(b) 결정 후 아래만 추가하면 나머지는 그대로 재사용:
-- `RealtimeProviderA` (tabCapture 스트리밍) / `BatchProviderB` (서버 사전처리)
+## (a) 실시간 자막 흐름 (결정 D-7)
+
+```
+popup '실시간 시작'(사용자 제스처)
+  → background: tabCapture.getMediaStreamId → offscreen 생성 → content 실시간 ON
+  → offscreen: 탭 오디오 캡처(AudioContext) → 오디오 윈도우마다 audioChunk 신호
+  → content: RealtimeProvider.pushAudio → SttClient(중국어) → MtClient(한국어) → 용어집 → 오버레이 라이브 표시
+```
+
+- **STT/MT는 인터페이스** — 현재 Mock 구현으로 전체 배선을 검증. 실구현은 **Q-4 결정 후** 교체:
+  - `OnDeviceSttClient`(브라우저 WASM, 계획 §3-3 우선) 또는 `ServerSttClient`(스트리밍 서버)
+  - `DeepLMtClient`(백그라운드 fetch)
+- **누적 cue → 캐시(§3-4)** 저장으로 재시청 시 정적 즉시 표시 가능(후속 연결).
+
+### 수동 테스트 (실제 유튜브 필요, 헤드리스 불가)
+1. 확장 로드 → 유튜브 영상 재생 → 팝업 **실시간 자막 시작**
+2. 탭 오디오 캡처 시작 → 약 3초 간격으로 **데모 한국어 자막**이 오버레이로 표시(목 STT/MT)
+   - 데모에 '미란→밀라노' 용어집 교정이 라이브로 적용됨(차별점 실증)
+3. **정지**로 종료(offscreen 닫힘)
+
+> 데모는 목이라 실제 발화와 무관한 스크립트 자막이 뜹니다. 실제 인식·번역 연결이 다음 단계.
 
 ## 설치(개발자 로드)
 
@@ -55,4 +82,6 @@ npm test             # 코어 유닛 + DOM 통합
 
 - `storage`: 설정·자막 캐시 저장
 - `host_permissions: *.youtube.com`: 유튜브 페이지에서만 동작
-- **tabCapture 등 오디오/광범위 권한은 포함하지 않음** — (a) 방식 채택 시에만 별도 추가. 웹스토어 심사 리스크(§6) 최소화.
+- `tabCapture`: (a) 실시간 캡처 — **사용자가 '실시간 시작'을 누를 때만** 캡처 개시
+- `offscreen`: 캡처를 화면 없는 문서로 격리
+- 캡처 오디오는 **처리용으로만 사용**(저장·불필요 전송 없음). 온디바이스 STT 채택 시 오디오가 문서 밖으로 나가지 않음. 개인정보처리방침 명시 필요(§6).
