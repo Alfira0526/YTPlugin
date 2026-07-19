@@ -40,6 +40,13 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="자막 캐시를 사용하지 않음(§3-4). 기본은 video_id 기준 캐시 사용",
     )
+    p.add_argument(
+        "--glossary",
+        nargs="?",
+        const="__seed__",
+        default=None,
+        help="고유명사 용어집 적용(opt-in, Q-2). 값 없으면 시드 사용, 경로 지정 가능",
+    )
     return p.parse_args(argv)
 
 
@@ -69,8 +76,14 @@ def main(argv: list[str] | None = None) -> int:
         from .cache import SubtitleCache
         cache = SubtitleCache()
 
+    # 용어집(opt-in): --glossary 지정 시에만 로드
+    glossary = None
+    if args.glossary is not None:
+        from .glossary.glossary import Glossary
+        glossary = Glossary.from_json(None if args.glossary == "__seed__" else args.glossary)
+
     print(f"[파일럿] STT={stt_backend} MT={mt_backend} video_id={video_id}"
-          f"{' (cache on)' if cache else ''}")
+          f"{' (cache on)' if cache else ''}{' (glossary %d)' % glossary.size if glossary else ''}")
     result = run_pipeline(
         audio_path=audio_path,
         stt_backend=stt_backend,
@@ -79,6 +92,7 @@ def main(argv: list[str] | None = None) -> int:
         target_lang=cfg.target_lang,
         video_id=video_id,
         cache=cache,
+        glossary=glossary,
     )
 
     out_dir = Path(args.out_dir)

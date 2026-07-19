@@ -39,11 +39,13 @@ def run_pipeline(
     target_lang: str = "ko",
     video_id: str | None = None,
     cache=None,
+    glossary=None,
 ) -> PipelineResult:
     """오디오 한 개를 전사·번역하여 결과를 반환.
 
     cache(SubtitleCache)와 video_id가 주어지면 캐시 우선 조회 → 미스 시에만
     STT·MT를 실행하고 결과를 저장한다(§3-4 비용 절감).
+    glossary(Glossary)가 주어지면 번역 후 고유명사 교정을 적용한다(opt-in, Q-2).
     """
     # 캐시 우선 조회
     if cache is not None and video_id and cache.has(video_id):
@@ -70,6 +72,9 @@ def run_pipeline(
     texts = [s.text for s in source_segments]
     translated = mt.translate(texts, source=source_lang, target=target_lang) if texts else []
     t2 = time.perf_counter()
+
+    if glossary is not None:
+        translated = [glossary.apply(t) for t in translated]
 
     ko_segments = [
         seg.with_text(ko) for seg, ko in zip(source_segments, translated)
