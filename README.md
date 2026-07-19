@@ -85,12 +85,10 @@ python -m pilot.run_pilot \
 따라서 **이 샌드박스에서는 실제 모델을 이용한 end-to-end 파일럿을 완주할 수 없습니다.**
 대신 `--smoke` 모드(오프라인 스텁 백엔드)로 **하네스 로직 자체를 검증**했습니다.
 
-**실제 파일럿을 돌리려면** 다음 중 하나가 필요합니다:
-1. **로컬/GPU 머신에서 실행** (HuggingFace 접근 가능 + GPU) — 코드는 그대로 사용 가능
-2. 환경의 **네트워크 정책에 HuggingFace/ModelScope 허용** 추가
-3. DeepL/Papago **API 키 발급** + 해당 호스트 허용 (MT 경로 한정)
+**실제 파일럿 실행 = 로컬/GPU 머신** 으로 결정되었습니다 (결정 D-13).
+이 리포를 클론해 GPU 로컬 환경에서 바로 실행할 수 있습니다 — 단계별 절차는 **[`docs/RUN_LOCAL.md`](docs/RUN_LOCAL.md)** 참조.
 
-자세한 내용은 [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) 참조.
+자세한 환경 제약·대안은 [`docs/ENVIRONMENT.md`](docs/ENVIRONMENT.md) 참조.
 
 ---
 
