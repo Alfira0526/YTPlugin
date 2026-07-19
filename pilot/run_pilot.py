@@ -35,6 +35,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="오프라인 스모크 모드: stub 백엔드로 배관만 검증(모델·키 불필요)",
     )
+    p.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="자막 캐시를 사용하지 않음(§3-4). 기본은 video_id 기준 캐시 사용",
+    )
     return p.parse_args(argv)
 
 
@@ -58,13 +63,22 @@ def main(argv: list[str] | None = None) -> int:
             print(f"오류: 오디오 파일을 찾을 수 없습니다: {audio_path}", file=sys.stderr)
             return 2
 
-    print(f"[파일럿] STT={stt_backend} MT={mt_backend} video_id={video_id}")
+    # 캐시: 스모크 모드가 아니고 --no-cache가 아니면 사용
+    cache = None
+    if not args.smoke and not args.no_cache:
+        from .cache import SubtitleCache
+        cache = SubtitleCache()
+
+    print(f"[파일럿] STT={stt_backend} MT={mt_backend} video_id={video_id}"
+          f"{' (cache on)' if cache else ''}")
     result = run_pipeline(
         audio_path=audio_path,
         stt_backend=stt_backend,
         mt_backend=mt_backend,
         source_lang=cfg.source_lang,
         target_lang=cfg.target_lang,
+        video_id=video_id,
+        cache=cache,
     )
 
     out_dir = Path(args.out_dir)
@@ -78,6 +92,8 @@ def main(argv: list[str] | None = None) -> int:
     memo_path = out_dir / f"{video_id}_memo.md"
     memo_path.write_text(memo, encoding="utf-8")
 
+    if result.cache_hit:
+        print(f"  ✓ 캐시 히트 — STT·MT 재처리 생략 (video_id={video_id})")
     print(f"  세그먼트 {len(result.segments)}개 | STT {result.stt_seconds:.2f}s "
           f"| MT {result.mt_seconds:.2f}s | 원문 {result.mt_usage.source_chars}자")
     print(f"  ▶ SRT : {srt_path}")

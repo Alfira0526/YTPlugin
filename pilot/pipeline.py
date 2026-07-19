@@ -24,6 +24,7 @@ class PipelineResult:
     mt_usage: MTUsage = field(default_factory=MTUsage)
     stt_backend: str = ""
     mt_backend: str = ""
+    cache_hit: bool = False          # 캐시에서 가져왔는지(§3-4)
 
     @property
     def total_seconds(self) -> float:
@@ -36,8 +37,29 @@ def run_pipeline(
     mt_backend: str = "stub",
     source_lang: str = "zh",
     target_lang: str = "ko",
+    video_id: str | None = None,
+    cache=None,
 ) -> PipelineResult:
-    """오디오 한 개를 전사·번역하여 결과를 반환."""
+    """오디오 한 개를 전사·번역하여 결과를 반환.
+
+    cache(SubtitleCache)와 video_id가 주어지면 캐시 우선 조회 → 미스 시에만
+    STT·MT를 실행하고 결과를 저장한다(§3-4 비용 절감).
+    """
+    # 캐시 우선 조회
+    if cache is not None and video_id and cache.has(video_id):
+        ko_segments = cache.get(video_id) or []
+        src_segments = [
+            Segment(start=s.start, end=s.end, text=(s.source_text or s.text))
+            for s in ko_segments
+        ]
+        return PipelineResult(
+            segments=ko_segments,
+            source_segments=src_segments,
+            stt_backend="cache",
+            mt_backend="cache",
+            cache_hit=True,
+        )
+
     stt = get_stt_backend(stt_backend)
     mt = get_mt_backend(mt_backend)
 
@@ -53,6 +75,14 @@ def run_pipeline(
         seg.with_text(ko) for seg, ko in zip(source_segments, translated)
     ]
 
+    # 캐시에 저장(다음 시청부터 재처리 생략)
+    if cache is not None and video_id:
+        cache.put(
+            video_id,
+            ko_segments,
+            meta={"stt": stt.name, "mt": mt.name, "source_chars": getattr(mt, "usage", MTUsage()).source_chars},
+        )
+
     return PipelineResult(
         segments=ko_segments,
         source_segments=source_segments,
@@ -61,4 +91,5 @@ def run_pipeline(
         mt_usage=getattr(mt, "usage", MTUsage()),
         stt_backend=stt.name,
         mt_backend=mt.name,
+        cache_hit=False,
     )
