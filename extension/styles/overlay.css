@@ -1,0 +1,43 @@
+/* YTPlugin 자막 오버레이 — 유튜브 플레이어 위 렌더링 */
+.ytp-cc-overlay {
+  /* 기본값은 부모에 선언 → applyStyle이 부모에 덮어쓰고 자식이 상속받음 */
+  --ytp-cc-font-scale: 1;
+  --ytp-cc-bg-opacity: 0.55;
+  position: absolute;
+  left: 50%;
+  bottom: 12%;
+  transform: translateX(-50%);
+  z-index: 60; /* 영상 위, 가급적 컨트롤 아래 */
+  max-width: 92%;
+  display: flex;
+  justify-content: center;
+  pointer-events: none; /* 클릭이 영상/컨트롤로 통과 */
+  text-align: center;
+}
+
+.ytp-cc-overlay__text {
+  display: inline-block;
+  padding: 0.15em 0.5em;
+  background: rgba(0, 0, 0, var(--ytp-cc-bg-opacity));
+  color: #fff;
+  font-family: "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  font-size: calc(2.6vw * var(--ytp-cc-font-scale));
+  font-weight: 600;
+  line-height: 1.35;
+  border-radius: 6px;
+  white-space: pre-wrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  transition: opacity 0.12s ease;
+  opacity: 0;
+}
+
+.ytp-cc-overlay.is-visible .ytp-cc-overlay__text {
+  opacity: 1;
+}
+
+/* 전체화면 등 큰 화면에서 글자 상한 */
+@media (min-width: 1400px) {
+  .ytp-cc-overlay__text {
+    font-size: calc(34px * var(--ytp-cc-font-scale));
+  }
+}

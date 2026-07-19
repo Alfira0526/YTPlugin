@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "YTPlugin — 중국어 영상 한국어 자막 오버레이",
+  "version": "0.1.0",
+  "description": "유튜브 무자막 중국어 영상에 한국어 번역 자막을 오버레이합니다. (P0: 오디오 방식 중립 오버레이 레이어)",
+  "permissions": ["storage"],
+  "host_permissions": ["*://*.youtube.com/*"],
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "YTPlugin 자막 설정"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/watch*"],
+      "js": [
+        "src/core/srt.js",
+        "src/core/track.js",
+        "src/providers/static-provider.js",
+        "src/overlay.js",
+        "src/content.js"
+      ],
+      "css": ["styles/overlay.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

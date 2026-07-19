@@ -32,19 +32,25 @@
 
 ```
 YTPlugin/
-├── docs/            # 근거 문서 미러 + 의사결정 로그
-├── pilot/           # ★ P0 파일럿 하네스 (STT→MT 품질 검증)
+├── docs/            # 근거 문서 미러 + 의사결정 로그 + 개발 로그 + 결정 대기 큐
+├── pilot/           # P0 파일럿 하네스 (STT→MT 품질 검증)
 │   ├── stt/         #   STT 백엔드 (qwen3-asr / sensevoice / stub)
 │   ├── mt/          #   MT 백엔드 (deepl / papago / stub)
 │   ├── pipeline.py  #   재사용 코어 (방식 a/b 양쪽이 공유)
 │   ├── run_pilot.py #   단일 명령 실행기: 오디오 → STT → MT → SRT + 메모
 │   └── templates/   #   파일럿 메모 / Kill Criteria 템플릿
+├── extension/       # ★ Chrome 확장(MV3) — 유튜브 위 한국어 자막 오버레이 (오디오 방식 중립)
+│   ├── src/core/    #   SRT 파싱·자막 트랙 (순수·테스트 가능)
+│   ├── src/providers/ # 자막 공급원 인터페이스 (a/b는 여기에 나중에 연결)
+│   ├── src/content.js # 유튜브 video 싱크 오버레이
+│   └── test/        #   코어 유닛 + 실브라우저 DOM 통합 테스트
 ├── cache/           # 자막 캐시 스텁 (video ID → 자막 KV) — 설계만
 └── scripts/         # 환경 부트스트랩
 ```
 
-> 확장 프로그램(`extension/`)과 백엔드 서버(`backend/`)는 **의도적으로 아직 없습니다**.
-> 오디오 확보 방식 (a)/(b)가 아키텍처를 좌우하므로, 그 결정 전까지 만들지 않습니다.
+> **오버레이 확장은 오디오 확보 방식 (a)/(b) 결정과 무관하게 공유되는 레이어**라 먼저 구현했습니다.
+> 자막 공급원을 인터페이스로 추상화(현재 정적 SRT 로드)했고, 실시간 (a)/(b) 공급원은 결정 후 연결합니다.
+> **백엔드 서버(`backend/`)는 (b) 채택 시에만** 만듭니다. 상세: [`docs/개발로그.md`](docs/개발로그.md), [`docs/결정대기_큐.md`](docs/결정대기_큐.md).
 
 ---
 

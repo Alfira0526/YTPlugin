@@ -1,0 +1,14 @@
+{
+  "name": "ytplugin-extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "YTPlugin — 유튜브 중국어 영상 한국어 자막 오버레이 Chrome 확장(MV3). 오디오 확보 방식 (a)/(b) 중립 오버레이 레이어.",
+  "scripts": {
+    "test": "node --test test/core.test.cjs && node test/overlay.dom.test.cjs",
+    "test:core": "node --test test/core.test.cjs",
+    "test:dom": "node test/overlay.dom.test.cjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.0"
+  }
+}
