@@ -112,6 +112,33 @@
     await refreshStatus();
   }
 
+  function renderSttTest(t) {
+    const el = $("sttStatus");
+    if (!el || !t) return;
+    if (t.status === "progress") {
+      el.textContent = "⏳ " + (t.stage || "진행 중…");
+    } else if (t.status === "done" && t.ok) {
+      const rt = parseFloat(t.ratio);
+      const verdict = rt <= 1 ? "🟢 실시간 가능성 있음" : rt <= 2 ? "🟡 준실시간(약간 느림)" : "🔴 실시간엔 느림";
+      el.innerHTML =
+        `<b>인식 결과:</b> ${t.text ? t.text : "(빈 결과)"}<br>` +
+        `모델로딩 ${t.loadMs}ms · 인식 ${t.inferMs}ms (${t.seconds}초 오디오) · 배속 ${t.ratio}<br>` +
+        `<b>${verdict}</b> (배속 1 이하면 실시간 따라감)`;
+    } else if (t.status === "done") {
+      el.textContent = "❌ 실패: " + (t.error || "알 수 없음");
+    }
+  }
+
+  async function onSttTest() {
+    const tab = await queryActiveTab();
+    if (!tab) return;
+    $("sttStatus").textContent = "⏳ 시작… (영상이 재생 중인지 확인하세요)";
+    chrome.runtime.sendMessage({ type: "stt:test", tabId: tab.id, seconds: 6 }, (resp) => {
+      void chrome.runtime.lastError;
+      if (resp && resp.ok === false) $("sttStatus").textContent = "❌ " + (resp.error || "시작 실패");
+    });
+  }
+
   async function init() {
     const res = await new Promise((r) => chrome.storage.local.get(SETTINGS_KEY, r));
     applySettingsToUI(Object.assign({}, DEFAULTS, res[SETTINGS_KEY] || {}));
@@ -121,6 +148,13 @@
     });
     $("srtFile").addEventListener("change", onSrtSelected);
     $("realtimeBtn").addEventListener("click", onRealtimeToggle);
+    $("sttTestBtn").addEventListener("click", onSttTest);
+    // 음성인식 테스트 결과 표시(진행 중 팝업 닫혀도 storage로 복원)
+    const stt0 = await new Promise((r) => chrome.storage.local.get("sttTest", r));
+    renderSttTest(stt0.sttTest);
+    chrome.storage.onChanged.addListener((ch, area) => {
+      if (area === "local" && ch.sttTest) renderSttTest(ch.sttTest.newValue);
+    });
     // DeepL 키 로드·저장
     const keyRes = await new Promise((r) => chrome.storage.local.get("deeplApiKey", r));
     $("deeplKey").value = keyRes.deeplApiKey || "";

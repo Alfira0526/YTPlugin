@@ -70,6 +70,13 @@
     </div>
 
     <div class="card">
+      <h2>음성인식 성능 테스트 (실험)</h2>
+      <button id="sttTestBtn" style="width:100%;padding:9px;border-radius:8px;border:1px solid #0f8a5f;background:#0f8a5f;color:#fff;font-weight:600;cursor:pointer;">6초 음성인식 테스트</button>
+      <div class="hint">중국어 영상 <b>재생 중</b>에 눌러주세요. 6초 소리를 브라우저 AI(Whisper)로 인식해 <b>결과와 걸린 시간</b>을 잽니다. 처음엔 모델 다운로드로 시간이 걸려요(수십 MB, 최초 1회).</div>
+      <div class="status" id="sttStatus"></div>
+    </div>
+
+    <div class="card">
       <h2>이 영상 자막(SRT) 불러오기</h2>
       <input type="file" id="srtFile" accept=".srt,.vtt,text/plain" />
       <div class="hint">사전 생성된 자막 파일을 현재 영상(<code id="vidLabel">-</code>)에 적용합니다.</div>

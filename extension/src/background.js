@@ -56,6 +56,19 @@ async function stopRealtime(tabId) {
   offscreenReady = false;
 }
 
+async function runSttTest(tabId, seconds, model) {
+  chrome.storage.local.set({ sttTest: { status: "progress", stage: "시작…" } });
+  const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
+  await ensureOffscreen();
+  chrome.runtime.sendMessage({
+    target: "offscreen",
+    type: "offscreen:sttTest",
+    streamId,
+    seconds: seconds || 6,
+    model: model || "Xenova/whisper-base",
+  });
+}
+
 // 키보드 단축키 — 탭과 PWA 앱 창 모두에서 실시간 토글(PWA는 팝업이 없으므로 필수 경로)
 chrome.commands.onCommand.addListener(async (command) => {
   if (command !== "toggle-realtime") return;
@@ -83,6 +96,25 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // offscreen → content 릴레이 (오디오 청크 신호)
   if (msg.type === "realtime:audioChunk" && msg.tabId != null) {
     chrome.tabs.sendMessage(msg.tabId, { type: "realtime:audioChunk", ts: msg.ts });
+  }
+  // 온디바이스 음성인식 테스트: popup 요청 → offscreen에서 캡처+Whisper 1회
+  if (msg.type === "stt:test") {
+    runSttTest(msg.tabId, msg.seconds, msg.model)
+      .then(() => sendResponse({ ok: true }))
+      .catch((e) => {
+        chrome.storage.local.set({ sttTest: { status: "done", ok: false, error: String(e && e.message ? e.message : e) } });
+        sendResponse({ ok: false, error: String(e && e.message ? e.message : e) });
+      });
+    return true;
+  }
+  // offscreen → 결과/진행상황을 storage에 저장(popup이 읽음)
+  if (msg.target === "bg") {
+    if (msg.type === "stt:test:progress") {
+      chrome.storage.local.set({ sttTest: { status: "progress", stage: msg.stage } });
+    } else if (msg.type === "stt:test:result") {
+      chrome.storage.local.set({ sttTest: Object.assign({ status: "done" }, msg) });
+    }
+    return;
   }
   // MT 위임: content가 번역을 요청하면 background가 키로 DeepL 호출(키 미노출)
   if (msg.type === "mt:translate") {

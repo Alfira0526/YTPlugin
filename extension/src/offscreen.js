@@ -1,15 +1,24 @@
 /*
- * offscreen.js — 탭 오디오 캡처 (화면 없는 문서). background가 조정.
+ * offscreen.js (module) — 탭 오디오 캡처 + 온디바이스 음성인식(Transformers.js/Whisper).
+ * background가 조정. 화면 없는 문서.
  *
- * 받은 streamId로 탭 오디오 MediaStream을 얻고, AudioContext로 처리한다.
- * 현재(스켈레톤): 일정 주기로 'realtime:audioChunk' 신호를 보내 실시간 배선을 구동.
+ * 두 기능:
+ *  1) 실시간 데모: 주기적 audioChunk 신호(목 STT 구동) — 기존 유지
+ *  2) 음성인식 테스트: N초 탭 오디오를 캡처해 Whisper로 1회 전사, 정확도/시간 측정(§3-0)
  *
- * ▶ 실제 STT 연결 지점(Q-4 결정 후):
- *   - 온디바이스: 여기(offscreen)에서 WASM STT에 PCM을 넣고, 인식된 (중국어) 세그먼트를
- *     content로 보낸다(오디오 원본은 문서 밖으로 나가지 않음 → 프라이버시/ToS 유리).
- *   - 서버: 여기서 PCM을 WebSocket으로 스트리밍 서버에 보내고 세그먼트를 수신.
+ * ⚠️ 온디바이스라 오디오는 기기 밖으로 나가지 않음(모델 가중치만 최초 1회 다운로드).
+ *    전용 GPU 없는 PC에선 느릴 수 있음 — 그래서 '측정' 먼저.
  */
-"use strict";
+import { pipeline, env } from "./vendor/transformers.web.min.js";
+
+// 원격 모델 허용(HuggingFace), 로컬 캐시 사용
+env.allowRemoteModels = true;
+// 단일 스레드 WASM — SharedArrayBuffer(교차출처 격리) 미가용 환경에서도 동작하도록
+try {
+  if (env.backends && env.backends.onnx && env.backends.onnx.wasm) {
+    env.backends.onnx.wasm.numThreads = 1;
+  }
+} catch (_e) {}
 
 let audioCtx = null;
 let stream = null;
@@ -17,59 +26,121 @@ let source = null;
 let timer = null;
 let currentTabId = null;
 
-const CHUNK_MS = 2000; // 처리 윈도우(스켈레톤 신호 주기)
+const CHUNK_MS = 2000;
+let asr = null;
+let asrModelId = null;
 
-async function start(streamId, tabId) {
-  await stop(); // 기존 정리
+function bg(msg) {
+  try { chrome.runtime.sendMessage(Object.assign({ target: "bg" }, msg)); } catch (_e) {}
+}
+
+// ---- 실시간 데모(기존) ----
+async function startDemo(streamId, tabId) {
+  await stopCapture();
   currentTabId = tabId;
   stream = await navigator.mediaDevices.getUserMedia({
-    audio: {
-      mandatory: {
-        chromeMediaSource: "tab",
-        chromeMediaSourceId: streamId,
-      },
-    },
+    audio: { mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: streamId } },
   });
-
   audioCtx = new AudioContext();
   source = audioCtx.createMediaStreamSource(stream);
-  // 캡처 중에도 사용자가 소리를 계속 듣도록 출력에 연결
   source.connect(audioCtx.destination);
-
-  // 스켈레톤: 주기적으로 오디오 윈도우 경계 신호 → content의 RealtimeProvider.pushAudio 구동
-  // (실구현에서는 이 자리에서 PCM을 STT로 넘겨 인식 세그먼트를 방출)
   timer = setInterval(() => {
     chrome.runtime.sendMessage({ type: "realtime:audioChunk", tabId: currentTabId });
   }, CHUNK_MS);
 }
 
-async function stop() {
-  if (timer) {
-    clearInterval(timer);
-    timer = null;
-  }
-  if (source) {
-    try { source.disconnect(); } catch (_e) {}
-    source = null;
-  }
-  if (stream) {
-    stream.getTracks().forEach((t) => t.stop());
-    stream = null;
-  }
-  if (audioCtx) {
-    try { await audioCtx.close(); } catch (_e) {}
-    audioCtx = null;
-  }
+async function stopCapture() {
+  if (timer) { clearInterval(timer); timer = null; }
+  if (source) { try { source.disconnect(); } catch (_e) {} source = null; }
+  if (stream) { stream.getTracks().forEach((t) => t.stop()); stream = null; }
+  if (audioCtx) { try { await audioCtx.close(); } catch (_e) {} audioCtx = null; }
   currentTabId = null;
+}
+
+// ---- 음성인식 테스트(신규) ----
+async function ensureAsr(modelId) {
+  if (asr && asrModelId === modelId) return asr;
+  bg({ type: "stt:test:progress", stage: "모델 로딩(최초 1회 다운로드, 수십 MB)…" });
+  let device = "webgpu";
+  try {
+    asr = await pipeline("automatic-speech-recognition", modelId, { device: "webgpu" });
+  } catch (_e) {
+    device = "wasm";
+    asr = await pipeline("automatic-speech-recognition", modelId); // wasm 폴백
+  }
+  asrModelId = modelId;
+  bg({ type: "stt:test:progress", stage: `모델 준비됨 (device=${device})` });
+  return asr;
+}
+
+// N초 동안 탭 오디오를 16kHz mono Float32로 수집
+function captureSeconds(streamId, seconds) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({
+        audio: { mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: streamId } },
+      });
+      const ctx = new AudioContext({ sampleRate: 16000 });
+      const src = ctx.createMediaStreamSource(s);
+      src.connect(ctx.destination); // 사용자에게 소리 유지
+      const proc = ctx.createScriptProcessor(4096, 1, 1);
+      const chunks = [];
+      let total = 0;
+      proc.onaudioprocess = (e) => {
+        const d = e.inputBuffer.getChannelData(0);
+        chunks.push(new Float32Array(d));
+        total += d.length;
+      };
+      src.connect(proc);
+      proc.connect(ctx.destination);
+      setTimeout(async () => {
+        proc.disconnect();
+        src.disconnect();
+        s.getTracks().forEach((t) => t.stop());
+        const rate = ctx.sampleRate;
+        await ctx.close();
+        const out = new Float32Array(total);
+        let off = 0;
+        for (const c of chunks) { out.set(c, off); off += c.length; }
+        resolve({ audio: out, sampleRate: rate });
+      }, seconds * 1000);
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+async function sttTest(streamId, seconds, modelId) {
+  const t0 = performance.now();
+  const model = await ensureAsr(modelId);
+  const loadMs = Math.round(performance.now() - t0);
+  bg({ type: "stt:test:progress", stage: `${seconds}초 오디오 캡처 중…` });
+  const { audio, sampleRate } = await captureSeconds(streamId, seconds);
+  bg({ type: "stt:test:progress", stage: "인식 중…" });
+  const t1 = performance.now();
+  const out = await model(audio, { language: "zh", task: "transcribe", sampling_rate: sampleRate });
+  const inferMs = Math.round(performance.now() - t1);
+  const text = out && out.text ? out.text.trim() : "";
+  bg({
+    type: "stt:test:result",
+    ok: true,
+    text,
+    inferMs,
+    loadMs,
+    seconds,
+    ratio: (inferMs / 1000 / seconds).toFixed(2), // 1보다 작으면 실시간 가능성
+  });
 }
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (!msg || msg.target !== "offscreen") return;
   if (msg.type === "offscreen:start") {
-    start(msg.streamId, msg.tabId).catch((e) =>
-      console.error("[YTPlugin offscreen] 캡처 시작 실패:", e)
-    );
+    startDemo(msg.streamId, msg.tabId).catch((e) => console.error("[YTPlugin offscreen] 캡처 실패:", e));
   } else if (msg.type === "offscreen:stop") {
-    stop();
+    stopCapture();
+  } else if (msg.type === "offscreen:sttTest") {
+    sttTest(msg.streamId, msg.seconds || 6, msg.model || "Xenova/whisper-base").catch((e) =>
+      bg({ type: "stt:test:result", ok: false, error: String(e && e.message ? e.message : e) })
+    );
   }
 });
