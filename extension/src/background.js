@@ -14,6 +14,7 @@
 
 const OFFSCREEN_PATH = "src/offscreen.html";
 let offscreenReady = false;
+const activeTabs = new Set(); // 실시간 캡처 중인 탭
 
 async function ensureOffscreen() {
   if (offscreenReady) return;
@@ -29,16 +30,21 @@ async function ensureOffscreen() {
 }
 
 async function startRealtime(tabId) {
-  // 사용자 제스처(popup 클릭)에서 호출되어야 함
+  // 사용자 제스처(popup 클릭 또는 단축키 commands)에서 호출되어야 함.
+  // 단축키(commands)는 확장 툴바가 없는 PWA 앱 창에서도 유효한 호출 경로.
   const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId });
   await ensureOffscreen();
   chrome.runtime.sendMessage({ target: "offscreen", type: "offscreen:start", streamId, tabId });
   chrome.tabs.sendMessage(tabId, { type: "realtime:on" });
+  activeTabs.add(tabId);
 }
 
 async function stopRealtime(tabId) {
   chrome.runtime.sendMessage({ target: "offscreen", type: "offscreen:stop" });
-  if (tabId != null) chrome.tabs.sendMessage(tabId, { type: "realtime:off" });
+  if (tabId != null) {
+    chrome.tabs.sendMessage(tabId, { type: "realtime:off" });
+    activeTabs.delete(tabId);
+  }
   try {
     if (await chrome.offscreen.hasDocument?.()) await chrome.offscreen.closeDocument();
   } catch (_e) {
@@ -46,6 +52,18 @@ async function stopRealtime(tabId) {
   }
   offscreenReady = false;
 }
+
+// 키보드 단축키 — 탭과 PWA 앱 창 모두에서 실시간 토글(PWA는 팝업이 없으므로 필수 경로)
+chrome.commands.onCommand.addListener(async (command) => {
+  if (command !== "toggle-realtime") return;
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab || tab.id == null) return;
+  if (activeTabs.has(tab.id)) await stopRealtime(tab.id);
+  else await startRealtime(tab.id).catch((e) => console.error("[YTPlugin] 시작 실패:", e));
+});
+
+// 탭이 닫히면 정리
+chrome.tabs.onRemoved.addListener((tabId) => activeTabs.delete(tabId));
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || !msg.type) return;

@@ -12,6 +12,12 @@
     "default_popup": "src/popup/popup.html",
     "default_title": "YTPlugin 자막 설정"
   },
+  "commands": {
+    "toggle-realtime": {
+      "suggested_key": { "default": "Ctrl+Shift+Y", "mac": "Command+Shift+Y" },
+      "description": "실시간 자막 시작/정지 (탭·PWA 앱 창 공통)"
+    }
+  },
   "content_scripts": [
     {
       "matches": ["*://*.youtube.com/watch*"],
