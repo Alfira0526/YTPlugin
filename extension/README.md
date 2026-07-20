@@ -87,4 +87,5 @@ npm test             # 코어 유닛 + DOM 통합
 - `host_permissions: *.youtube.com`: 유튜브 페이지에서만 동작
 - `tabCapture`: (a) 실시간 캡처 — **사용자가 '실시간 시작'을 누를 때만** 캡처 개시
 - `offscreen`: 캡처를 화면 없는 문서로 격리
+- `host_permissions: api(-free).deepl.com`: DeepL 번역 호출(background에서만, 키 미노출)
 - 캡처 오디오는 **처리용으로만 사용**(저장·불필요 전송 없음). 온디바이스 STT 채택 시 오디오가 문서 밖으로 나가지 않음. 개인정보처리방침 명시 필요(§6).
