@@ -179,24 +179,54 @@
     }, holdMs);
   }
 
-  function enterRealtime() {
+  function sendToBackground(msg) {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.runtime.sendMessage(msg, (resp) => {
+          if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+          resolve(resp);
+        });
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
+  async function enterRealtime() {
     if (state.realtimeMode) return;
-    const { RealtimeProvider, MockSttClient, MockMtClient, Glossary } = self.YTP;
+    state.realtimeMode = true; // 재진입 가드
+    const { RealtimeProvider, MockSttClient, MockMtClient, DeepLMtClient, Glossary } = self.YTP;
     const clock = () => (state.videoEl ? state.videoEl.currentTime : 0);
+    // DeepL 키가 있으면 실제 번역(백그라운드 위임), 없으면 데모 목
+    const res = await storageGet("deeplApiKey");
+    const mtClient = res.deeplApiKey
+      ? new DeepLMtClient((m) => sendToBackground(m))
+      : new MockMtClient(DEMO_DICT);
     const provider = new RealtimeProvider({
       sttClient: new MockSttClient(DEMO_ZH, clock),
-      mtClient: new MockMtClient(DEMO_DICT),
+      mtClient,
       glossary: new Glossary(DEMO_GLOSSARY),
     });
     provider.onCue((cue) => showLiveCue(cue));
     provider.start();
     state.realtime = provider;
-    state.realtimeMode = true;
     if (state.overlay) state.overlay.setText("");
+  }
+
+  // 실시간으로 만든 자막을 캐시에 저장 → 재시청 시 정적으로 즉시 표시(§3-4)
+  function saveRealtimeToCache(cues) {
+    if (!state.videoId || !cues || !cues.length) return;
+    try {
+      const srt = self.YTP.serializeCues(cues);
+      if (srt) chrome.storage.local.set({ [srtKey(state.videoId)]: srt });
+    } catch (_e) {
+      /* 무시 */
+    }
   }
 
   function exitRealtime() {
     state.realtimeMode = false;
+    const cues = state.realtime ? state.realtime.getCues() : [];
     if (state.realtime) state.realtime.stop();
     state.realtime = null;
     if (state.liveTimer) {
@@ -205,6 +235,7 @@
     }
     if (state.overlay) state.overlay.setText("");
     state.lastText = null;
+    saveRealtimeToCache(cues);
   }
 
   // --- 팝업/백그라운드 메시지 ---

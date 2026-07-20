@@ -121,6 +121,12 @@
     });
     $("srtFile").addEventListener("change", onSrtSelected);
     $("realtimeBtn").addEventListener("click", onRealtimeToggle);
+    // DeepL 키 로드·저장
+    const keyRes = await new Promise((r) => chrome.storage.local.get("deeplApiKey", r));
+    $("deeplKey").value = keyRes.deeplApiKey || "";
+    $("deeplKey").addEventListener("change", () => {
+      chrome.storage.local.set({ deeplApiKey: $("deeplKey").value.trim() });
+    });
     await refreshStatus();
   }
 

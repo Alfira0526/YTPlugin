@@ -64,7 +64,9 @@
     <div class="card">
       <h2>실시간 자막 (베타)</h2>
       <button id="realtimeBtn" style="width:100%;padding:9px;border-radius:8px;border:1px solid #3a5bd9;background:#3a5bd9;color:#fff;font-weight:600;cursor:pointer;">실시간 자막 시작</button>
-      <div class="hint">탭 오디오를 캡처해 실시간으로 자막을 표시합니다((a) 방식). 현재 데모는 목 STT/MT이며, 실제 인식·번역은 준비 중입니다.</div>
+      <div class="hint">탭 오디오를 캡처해 실시간으로 자막을 표시합니다((a) 방식). 단축키 <code>Ctrl/⌘+Shift+Y</code>로도 시작(앱 창 포함).</div>
+      <input type="password" id="deeplKey" placeholder="DeepL API 키 (선택 입력)" autocomplete="off" style="width:100%;margin-top:8px;padding:7px 9px;border:1px solid #dde3ef;border-radius:8px;box-sizing:border-box;" />
+      <div class="hint">키를 넣으면 <b>실제 번역(DeepL)</b>, 없으면 데모 목 번역이 표시됩니다. 키는 이 브라우저에만 저장됩니다.</div>
     </div>
 
     <div class="card">

@@ -22,7 +22,9 @@ src/
     static-provider.js        # StaticProvider(video_id→SRT) — 사전 생성 자막
   realtime/                   # ★ (a) tabCapture 실시간 경로
     stt-client.js             #   SttClient 인터페이스 + MockSttClient
-    mt-client.js              #   MtClient 인터페이스 + MockMtClient
+    ondevice-stt-client.js    #   온디바이스 Whisper(Transformers.js) 스켈레톤 (Q-4)
+    mt-client.js              #   MtClient 인터페이스 + MockMtClient + DeepLMtClient
+    deepl.js                  #   DeepL 요청/응답 순수 헬퍼(테스트 가능)
     realtime-provider.js      #   캡처→STT→MT→용어집→onCue 오케스트레이터
   overlay.js                  # 오버레이 DOM 생성·스타일 적용
   content.js                  # video 싱크·SPA·정적/실시간 모드 (Chrome API 어댑터)
@@ -45,10 +47,11 @@ popup '실시간 시작'(사용자 제스처)
   → content: RealtimeProvider.pushAudio → SttClient(중국어) → MtClient(한국어) → 용어집 → 오버레이 라이브 표시
 ```
 
-- **STT/MT는 인터페이스** — 현재 Mock 구현으로 전체 배선을 검증. 실구현은 **Q-4 결정 후** 교체:
-  - `OnDeviceSttClient`(브라우저 WASM, 계획 §3-3 우선) 또는 `ServerSttClient`(스트리밍 서버)
-  - `DeepLMtClient`(백그라운드 fetch)
-- **누적 cue → 캐시(§3-4)** 저장으로 재시청 시 정적 즉시 표시 가능(후속 연결).
+- **STT/MT는 인터페이스** — 데모는 Mock, 실구현은 인터페이스 뒤로:
+  - STT: `OnDeviceSttClient`(온디바이스 Whisper, Q-4 확정) — 실기기/WebGPU 검증 대상
+  - MT: `DeepLMtClient` — **키 노출 방지 위해 background에 위임**(content는 메시지만). 팝업에 DeepL 키 입력 시 실제 번역, 없으면 데모 목.
+- **누적 cue → 캐시(§3-4) 저장 연결됨**: 실시간 종료 시 자막을 `serializeCues`로 SRT화하여
+  `srt:<video_id>`에 저장 → **재시청 시 정적 모드로 즉시 표시**(재처리 없음).
 
 ### 수동 테스트 (실제 유튜브 필요, 헤드리스 불가)
 1. 확장 로드 → 유튜브 영상 재생 → 팝업 **실시간 자막 시작**

@@ -32,5 +32,28 @@
     }
   }
 
-  return { MtClient, MockMtClient };
+  /*
+   * DeepL MT — 실제 번역. 키 노출 방지를 위해 content가 직접 fetch하지 않고
+   * background(서비스 워커)에 위임한다(주입된 send 함수). 실패 시 원문 반환(그레이스풀).
+   *   send({type:'mt:translate', text}) -> Promise<{text} | {error}>
+   */
+  class DeepLMtClient extends MtClient {
+    constructor(send) {
+      super();
+      this._send = send; // (msg) => Promise<resp>
+    }
+    async translate(text) {
+      const t = (text || "").trim();
+      if (!t) return "";
+      try {
+        const resp = await this._send({ type: "mt:translate", text: t });
+        if (resp && typeof resp.text === "string") return resp.text;
+      } catch (_e) {
+        /* 아래로 폴백 */
+      }
+      return t; // 실패 시 원문 유지(자막이 사라지지 않게)
+    }
+  }
+
+  return { MtClient, MockMtClient, DeepLMtClient };
 });

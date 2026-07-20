@@ -61,5 +61,17 @@
     return `${pad(hh)}:${pad(mm)}:${pad(ss)},${pad(ms, 3)}`;
   }
 
-  return { parseTimestamp, parseSRT, formatTimestamp };
+  // cue 배열([{start,end,text}]) → SRT 문자열 (실시간 결과를 캐시 저장할 때 사용)
+  function serializeCues(cues) {
+    const list = (cues || []).filter((c) => c && (c.text || "").trim() !== "");
+    return list
+      .map((c, i) => {
+        const start = formatTimestamp(c.start);
+        const end = formatTimestamp(c.end);
+        return `${i + 1}\n${start} --> ${end}\n${String(c.text).trim()}\n`;
+      })
+      .join("\n");
+  }
+
+  return { parseTimestamp, parseSRT, formatTimestamp, serializeCues };
 });

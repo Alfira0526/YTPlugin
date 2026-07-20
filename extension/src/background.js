@@ -12,6 +12,9 @@
  */
 "use strict";
 
+// DeepL 순수 헬퍼 로드(UMD → self.YTP)
+importScripts("realtime/deepl.js");
+
 const OFFSCREEN_PATH = "src/offscreen.html";
 let offscreenReady = false;
 const activeTabs = new Set(); // 실시간 캡처 중인 탭
@@ -81,4 +84,23 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "realtime:audioChunk" && msg.tabId != null) {
     chrome.tabs.sendMessage(msg.tabId, { type: "realtime:audioChunk", ts: msg.ts });
   }
+  // MT 위임: content가 번역을 요청하면 background가 키로 DeepL 호출(키 미노출)
+  if (msg.type === "mt:translate") {
+    translate(msg.text)
+      .then((text) => sendResponse({ text }))
+      .catch((e) => sendResponse({ error: String(e && e.message ? e.message : e) }));
+    return true; // async
+  }
 });
+
+async function translate(text) {
+  const { deeplApiKey } = await chrome.storage.local.get("deeplApiKey");
+  if (!deeplApiKey) throw new Error("DeepL 키 미설정");
+  const { buildDeepLRequest, parseDeepLResponse } = self.YTP;
+  const req = buildDeepLRequest(text, { apiKey: deeplApiKey, source: "ZH", target: "KO" });
+  const res = await fetch(req.url, { method: req.method, headers: req.headers, body: req.body });
+  if (!res.ok) throw new Error("DeepL HTTP " + res.status);
+  const json = await res.json();
+  const out = parseDeepLResponse(json);
+  return out[0] || "";
+}
